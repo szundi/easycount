@@ -2,6 +2,7 @@
   "name": "easycount-1",
   "author": "szundi",
   "version": "1.0.3",
+  "license": "MIT",
   "keywords": ["pebble-app"],
   "private": true,
   "dependencies": {
