@@ -5,6 +5,7 @@
 #define SPINNER_DOT_COUNT 8
 #define SUCCESS_DISPLAY_MS 1400
 #define ERROR_DISPLAY_MS 1400
+#define RESPONSE_TEXT_SIZE 244
 
 typedef enum {
   UI_STATE_LOADING,
@@ -23,7 +24,7 @@ static uint8_t s_spinner_frame;
 static bool s_finished;
 static bool s_configuration_launch;
 static char s_status_text[20];
-static char s_value_text[20];
+static char s_value_text[RESPONSE_TEXT_SIZE];
 
 static const GPoint s_spinner_offsets[SPINNER_DOT_COUNT] = {
   { 0, -24 },
@@ -88,8 +89,39 @@ static void prv_spinner_tick(void *context) {
                                         prv_spinner_tick, NULL);
 }
 
+static size_t prv_utf8_character_count(const char *text) {
+  size_t count = 0;
+  for (const unsigned char *byte = (const unsigned char *) text;
+       *byte; byte++) {
+    if ((*byte & 0xc0) != 0x80) {
+      count++;
+    }
+  }
+  return count;
+}
+
+static GFont prv_font_for_value(const char *text) {
+  const size_t length = prv_utf8_character_count(text);
+  if (length <= 4) {
+    return fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD);
+  }
+  if (length <= 6) {
+    return fonts_get_system_font(FONT_KEY_BITHAM_30_BLACK);
+  }
+  if (length <= 10) {
+    return fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
+  }
+  if (length <= 16) {
+    return fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+  }
+  if (length <= 24) {
+    return fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
+  }
+  return fonts_get_system_font(FONT_KEY_GOTHIC_14);
+}
+
 static void prv_finish(UiState state, int32_t status_code,
-                       int32_t response_value) {
+                       const char *response_text) {
   if (s_finished) {
     return;
   }
@@ -110,11 +142,15 @@ static void prv_finish(UiState state, int32_t status_code,
 
   if (state == UI_STATE_SUCCESS) {
     const GRect bounds = layer_get_bounds(window_get_root_layer(s_window));
-    snprintf(s_value_text, sizeof(s_value_text), "%ld", (long) response_value);
+    snprintf(s_value_text, sizeof(s_value_text), "%s", response_text);
+    text_layer_set_font(s_value_layer, prv_font_for_value(s_value_text));
     text_layer_set_text(s_value_layer, s_value_text);
     layer_set_hidden(text_layer_get_layer(s_value_layer), false);
+    layer_set_frame(text_layer_get_layer(s_value_layer),
+                    GRect(4, bounds.size.h * 48 / 100,
+                          bounds.size.w - 8, bounds.size.h * 34 / 100));
     layer_set_frame(text_layer_get_layer(s_text_layer),
-                    GRect(0, bounds.size.h * 80 / 100,
+                    GRect(0, bounds.size.h * 83 / 100,
                           bounds.size.w, 36));
     text_layer_set_text(s_text_layer, "OK");
     vibes_short_pulse();
@@ -135,7 +171,7 @@ static void prv_finish(UiState state, int32_t status_code,
 
 static void prv_watchdog_timeout(void *context) {
   s_watchdog_timer = NULL;
-  prv_finish(UI_STATE_ERROR, 0, 0);
+  prv_finish(UI_STATE_ERROR, 0, NULL);
 }
 
 static void prv_inbox_received(DictionaryIterator *iterator, void *context) {
@@ -148,7 +184,7 @@ static void prv_inbox_received(DictionaryIterator *iterator, void *context) {
 
   Tuple *status_tuple = dict_find(iterator, MESSAGE_KEY_STATUS);
   if (!status_tuple) {
-    prv_finish(UI_STATE_ERROR, -2, 0);
+    prv_finish(UI_STATE_ERROR, -2, NULL);
     return;
   }
 
@@ -156,29 +192,29 @@ static void prv_inbox_received(DictionaryIterator *iterator, void *context) {
   const bool is_success = status_code >= 200 && status_code < 300;
   if (is_success) {
     Tuple *value_tuple = dict_find(iterator, MESSAGE_KEY_VALUE);
-    if (!value_tuple) {
-      prv_finish(UI_STATE_ERROR, -5, 0);
+    if (!value_tuple || value_tuple->type != TUPLE_CSTRING) {
+      prv_finish(UI_STATE_ERROR, -5, NULL);
       return;
     }
-    prv_finish(UI_STATE_SUCCESS, status_code, value_tuple->value->int32);
+    prv_finish(UI_STATE_SUCCESS, status_code, value_tuple->value->cstring);
     return;
   }
 
-  prv_finish(UI_STATE_ERROR, status_code, 0);
+  prv_finish(UI_STATE_ERROR, status_code, NULL);
 }
 
 static void prv_send_request(void) {
   DictionaryIterator *iterator;
   AppMessageResult result = app_message_outbox_begin(&iterator);
   if (result != APP_MSG_OK) {
-    prv_finish(UI_STATE_ERROR, -4, 0);
+    prv_finish(UI_STATE_ERROR, -4, NULL);
     return;
   }
 
   dict_write_uint8(iterator, MESSAGE_KEY_REQUEST, 1);
   result = app_message_outbox_send();
   if (result != APP_MSG_OK) {
-    prv_finish(UI_STATE_ERROR, -4, 0);
+    prv_finish(UI_STATE_ERROR, -4, NULL);
   }
 }
 
@@ -196,6 +232,8 @@ static void prv_window_load(Window *window) {
   text_layer_set_font(s_value_layer,
                       fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD));
   text_layer_set_text_alignment(s_value_layer, GTextAlignmentCenter);
+  text_layer_set_overflow_mode(s_value_layer,
+                               GTextOverflowModeTrailingEllipsis);
   layer_set_hidden(text_layer_get_layer(s_value_layer), true);
   layer_add_child(window_layer, text_layer_get_layer(s_value_layer));
 
@@ -229,9 +267,9 @@ static void prv_init(void) {
   window_stack_push(s_window, false);
 
   app_message_register_inbox_received(prv_inbox_received);
-  const AppMessageResult result = app_message_open(64, 32);
+  const AppMessageResult result = app_message_open(384, 32);
   if (result != APP_MSG_OK) {
-    prv_finish(UI_STATE_ERROR, -3, 0);
+    prv_finish(UI_STATE_ERROR, -3, NULL);
     return;
   }
 

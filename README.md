@@ -40,11 +40,16 @@ a HTTP `GET` kérést. A Settings oldal megnyitása önmagában nem hívja meg a
 URL-t.
 
 - Várakozás közben egy nyolcpontos spinner forog.
-- HTTP 200-299 és érvényes egész szám: pipa, a visszaadott szám, `OK`, rövid
+- HTTP 200-299: pipa, a visszaadott szöveg, `OK`, rövid
   rezgés, majd kilépés.
-- A sikeres válasz törzse egy előjeles, 32 bites decimális egész legyen. A
-  javasolt fejléc: `Content-Type: text/plain; charset=utf-8`.
-- HTTP 200-299 és hibás válaszszöveg: X, `Hiba -5`, hosszú rezgés, majd kilépés.
+- A válasz tetszőleges UTF-8 szöveg lehet. A javasolt fejléc:
+  `Content-Type: text/plain; charset=utf-8`.
+- A betűméret a szöveg hosszával csökken. A méretlépcsők: legfeljebb 4, 6, 10,
+  16 és 24 karakter, majd a legkisebb méret. A kijelzőre nem férő szöveg vége
+  ellipszist kap.
+- A telefon legfeljebb 240 UTF-8 bájtot küld az órának. A hosszabb választ már
+  a telefon ellipszissel rövidíti. A Pebble rendszerfontjából hiányzó Unicode
+  karakterek nem jelennek meg helyesen.
 - Más HTTP-státusz: X, a pontos HTTP-kód, hosszú rezgés, majd kilépés.
 - Hálózati hiba vagy időtúllépés: X, `Hiba 0`, hosszú rezgés, majd kilépés.
 - Hiányzó URL: X, `Hiba -1`, hosszú rezgés, majd kilépés.
