@@ -108,7 +108,7 @@ function performRequest() {
       finish(status, responseTextForWatch(request.responseText));
       return;
     }
-    finish(status);
+    finish(status, responseTextForWatch(request.responseText));
   };
   request.onerror = function() {
     finish(0);

@@ -5,6 +5,7 @@
 #define SPINNER_DOT_COUNT 8
 #define SUCCESS_DISPLAY_MS 1400
 #define ERROR_DISPLAY_MS 1400
+#define HTTP_ERROR_WITH_TEXT_DISPLAY_MS 6000
 #define RESPONSE_TEXT_SIZE 244
 
 typedef enum {
@@ -19,10 +20,12 @@ static TextLayer *s_text_layer;
 static TextLayer *s_value_layer;
 static AppTimer *s_watchdog_timer;
 static AppTimer *s_spinner_timer;
+static AppTimer *s_exit_timer;
 static UiState s_ui_state = UI_STATE_LOADING;
 static uint8_t s_spinner_frame;
 static bool s_finished;
 static bool s_configuration_launch;
+static bool s_has_response_text;
 static char s_status_text[20];
 static char s_value_text[RESPONSE_TEXT_SIZE];
 
@@ -44,9 +47,12 @@ static void prv_icon_update_proc(Layer *layer, GContext *ctx) {
 
   const GRect bounds = layer_get_bounds(layer);
   const int16_t center_x = bounds.size.w / 2;
-  const int16_t center_y = s_ui_state == UI_STATE_SUCCESS
-      ? bounds.size.h * 34 / 100
-      : bounds.size.h / 2 - 16;
+  int16_t center_y = bounds.size.h / 2 - 16;
+  if (s_ui_state == UI_STATE_SUCCESS) {
+    center_y = bounds.size.h * 34 / 100;
+  } else if (s_ui_state == UI_STATE_ERROR && s_has_response_text) {
+    center_y = bounds.size.h * 24 / 100;
+  }
 
   graphics_context_set_stroke_color(ctx, GColorBlack);
   graphics_context_set_fill_color(ctx, GColorBlack);
@@ -74,7 +80,26 @@ static void prv_icon_update_proc(Layer *layer, GContext *ctx) {
 }
 
 static void prv_exit(void *context) {
+  s_exit_timer = NULL;
   window_stack_pop_all(false);
+}
+
+static void prv_select_click_handler(ClickRecognizerRef recognizer,
+                                     void *context) {
+  if (s_ui_state != UI_STATE_ERROR || !s_has_response_text) {
+    return;
+  }
+
+  if (s_exit_timer) {
+    app_timer_cancel(s_exit_timer);
+    s_exit_timer = NULL;
+  }
+  prv_exit(NULL);
+}
+
+static void prv_click_config_provider(void *context) {
+  window_single_click_subscribe(BUTTON_ID_SELECT,
+                                prv_select_click_handler);
 }
 
 static void prv_spinner_tick(void *context) {
@@ -137,6 +162,8 @@ static void prv_finish(UiState state, int32_t status_code,
   }
 
   s_ui_state = state;
+  s_has_response_text = state == UI_STATE_ERROR && status_code > 0 &&
+      response_text && response_text[0] != '\0';
   layer_mark_dirty(s_icon_layer);
   APP_LOG(APP_LOG_LEVEL_INFO, "Request result: %ld", (long) status_code);
 
@@ -155,7 +182,7 @@ static void prv_finish(UiState state, int32_t status_code,
     text_layer_set_text(s_text_layer, "OK");
     vibes_short_pulse();
     exit_reason_set(APP_EXIT_ACTION_PERFORMED_SUCCESSFULLY);
-    app_timer_register(SUCCESS_DISPLAY_MS, prv_exit, NULL);
+    s_exit_timer = app_timer_register(SUCCESS_DISPLAY_MS, prv_exit, NULL);
     return;
   }
 
@@ -165,8 +192,26 @@ static void prv_finish(UiState state, int32_t status_code,
     snprintf(s_status_text, sizeof(s_status_text), "Hiba %ld", (long) status_code);
   }
   text_layer_set_text(s_text_layer, s_status_text);
+
+  if (s_has_response_text) {
+    const GRect bounds = layer_get_bounds(window_get_root_layer(s_window));
+    snprintf(s_value_text, sizeof(s_value_text), "%s", response_text);
+    text_layer_set_font(s_value_layer, prv_font_for_value(s_value_text));
+    text_layer_set_text(s_value_layer, s_value_text);
+    layer_set_hidden(text_layer_get_layer(s_value_layer), false);
+    layer_set_frame(text_layer_get_layer(s_text_layer),
+                    GRect(0, bounds.size.h * 40 / 100,
+                          bounds.size.w, 36));
+    layer_set_frame(text_layer_get_layer(s_value_layer),
+                    GRect(4, bounds.size.h * 56 / 100,
+                          bounds.size.w - 8, bounds.size.h * 38 / 100));
+  }
+
   vibes_long_pulse();
-  app_timer_register(ERROR_DISPLAY_MS, prv_exit, NULL);
+  const uint32_t display_time = s_has_response_text
+      ? HTTP_ERROR_WITH_TEXT_DISPLAY_MS
+      : ERROR_DISPLAY_MS;
+  s_exit_timer = app_timer_register(display_time, prv_exit, NULL);
 }
 
 static void prv_watchdog_timeout(void *context) {
@@ -200,7 +245,11 @@ static void prv_inbox_received(DictionaryIterator *iterator, void *context) {
     return;
   }
 
-  prv_finish(UI_STATE_ERROR, status_code, NULL);
+  Tuple *value_tuple = dict_find(iterator, MESSAGE_KEY_VALUE);
+  const char *response_text = value_tuple && value_tuple->type == TUPLE_CSTRING
+      ? value_tuple->value->cstring
+      : NULL;
+  prv_finish(UI_STATE_ERROR, status_code, response_text);
 }
 
 static void prv_send_request(void) {
@@ -260,6 +309,7 @@ static void prv_init(void) {
 
   s_window = window_create();
   window_set_background_color(s_window, GColorWhite);
+  window_set_click_config_provider(s_window, prv_click_config_provider);
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = prv_window_load,
     .unload = prv_window_unload,
@@ -291,6 +341,9 @@ static void prv_deinit(void) {
   }
   if (s_watchdog_timer) {
     app_timer_cancel(s_watchdog_timer);
+  }
+  if (s_exit_timer) {
+    app_timer_cancel(s_exit_timer);
   }
   window_destroy(s_window);
 }

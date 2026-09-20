@@ -50,7 +50,11 @@ URL-t.
 - A telefon legfeljebb 240 UTF-8 bájtot küld az órának. A hosszabb választ már
   a telefon ellipszissel rövidíti. A Pebble rendszerfontjából hiányzó Unicode
   karakterek nem jelennek meg helyesen.
-- Más HTTP-státusz: X, a pontos HTTP-kód, hosszú rezgés, majd kilépés.
+- Más HTTP-státusz válaszszöveggel: X, a pontos HTTP-kód és a válaszszöveg,
+  hosszú rezgés, majd kilépés 6 másodperc után. A középső gomb azonnal bezárja
+  ezt a képernyőt.
+- Más HTTP-státusz válaszszöveg nélkül: X, a pontos HTTP-kód, hosszú rezgés,
+  majd kilépés.
 - Hálózati hiba vagy időtúllépés: X, `Hiba 0`, hosszú rezgés, majd kilépés.
 - Hiányzó URL: X, `Hiba -1`, hosszú rezgés, majd kilépés.
 - Ha a telefon nem válaszol, az óra 15 másodperc után `Hiba 0` eredménnyel
