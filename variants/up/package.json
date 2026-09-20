@@ -1,0 +1,46 @@
+{
+  "name": "easycount-1",
+  "author": "szundi",
+  "version": "1.0.3",
+  "keywords": ["pebble-app"],
+  "private": true,
+  "dependencies": {
+    "@rebble/clay": "1.1.0"
+  },
+  "pebble": {
+    "displayName": "easycount-1",
+    "uuid": "62178b31-6c58-4675-8709-97e06541244a",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "aplite",
+      "basalt",
+      "chalk",
+      "diorite",
+      "emery",
+      "flint",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "capabilities": ["configurable"],
+    "messageKeys": [
+      "STATUS",
+      "REQUEST",
+      "CONFIG_DONE",
+      "ACTION_URL",
+      "VALUE"
+    ],
+    "resources": {
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "MENU_ICON",
+          "file": "images/easycount-1.png",
+          "menuIcon": true
+        }
+      ]
+    }
+  }
+}
